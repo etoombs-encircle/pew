@@ -9,6 +9,8 @@ import textwrap
 from functools import partial
 from subprocess import CalledProcessError
 from pathlib import Path
+from configparser import RawConfigParser
+from string import Template
 
 try:
     from shutil import get_terminal_size
@@ -119,6 +121,18 @@ def compute_path(env):
         os.environ['PATH'],
     ])
 
+class InveParser(RawConfigParser):
+    # stop lowercasing keys
+    @staticmethod
+    def optionxform(option):
+        return option
+
+    def section_items(self, section, variables):
+        if section not in self:
+            return []
+
+        for k in self[section]:
+            yield (k, Template(self.get(section, k)).safe_substitute(variables))
 
 def inve(env, command, *args, **kwargs):
     """Run a command in the given virtual environment.
@@ -132,6 +146,10 @@ def inve(env, command, *args, **kwargs):
 
         unsetenv('PYTHONHOME')
         unsetenv('__PYVENV_LAUNCHER__')
+
+        parser = InveParser()
+        parser.read(os.path.join(os.environ['VIRTUAL_ENV'], '.inve.ini'))
+        os.environ.update(parser.section_items('env', os.environ))
 
         try:
             return check_call([command] + list(args), shell=windows, **kwargs)
