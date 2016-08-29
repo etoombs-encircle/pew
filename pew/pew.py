@@ -116,6 +116,11 @@ def unsetenv(key):
 
 def compute_path(env):
     envdir = workon_home / env
+
+    parser = InveParser()
+    parser.read(str(envdir / '.inve.ini'))
+    os.environ.update(parser.section_items('env', os.environ))
+
     return os.pathsep.join([
         str(envdir / env_bin_dir),
         os.environ['PATH'],
