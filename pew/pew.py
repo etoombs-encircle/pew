@@ -5,7 +5,9 @@ import sys
 import argparse
 import shutil
 import random
+import signal
 import textwrap
+from contextlib import contextmanager
 from functools import partial
 from subprocess import CalledProcessError
 from pathlib import Path
@@ -139,6 +141,18 @@ class InveParser(RawConfigParser):
         for k in self[section]:
             yield (k, Template(self.get(section, k)).safe_substitute(variables))
 
+@contextmanager
+def suspend_signal(signal_name):
+    orig_handler = signal.getsignal(signal_name)
+    if orig_handler is not None:
+        signal.signal(signal_name, signal.SIG_IGN)
+
+    try:
+        yield
+    finally:
+        if orig_handler is not None:
+            signal.signal(signal_name, orig_handler)
+
 def inve(env, command, *args, **kwargs):
     """Run a command in the given virtual environment.
 
@@ -157,7 +171,8 @@ def inve(env, command, *args, **kwargs):
         os.environ.update(parser.section_items('env', os.environ))
 
         try:
-            return check_call([command] + list(args), shell=windows, **kwargs)
+            with suspend_signal(signal.SIGINT):
+                return check_call([command] + list(args), shell=windows, **kwargs)
             # need to have shell=True on windows, otherwise the PYTHONPATH
             # won't inherit the PATH
         except OSError as e:
@@ -390,7 +405,7 @@ def workon_cmd(argv):
     project_dir = get_project_dir(env)
     if project_dir is None or argv[-1] == '--here': # TODO: use argparse
         project_dir = os.getcwd()
-    
+
     shell(env, cwd=project_dir)
 
 
