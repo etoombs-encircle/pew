@@ -139,10 +139,11 @@ class InveParser(RawConfigParser):
         for k in self[section]:
             yield (k, Template(self.get(section, k)).safe_substitute(variables))
 
-def inve(env, command, *args, **kwargs):
+def inve(env, command, *args, exec_=False, **kwargs):
     """Run a command in the given virtual environment.
 
-    Pass additional keyword arguments to ``subprocess.check_call()``."""
+    If not execcing (replacing the python process with the specified process),
+    pass additional keyword arguments to ``subprocess.check_call()``."""
     # we don't strictly need to restore the environment, since pew runs in
     # its own process, but it feels like the right thing to do
     with temp_environ():
@@ -156,15 +157,21 @@ def inve(env, command, *args, **kwargs):
         parser.read(os.path.join(os.environ['VIRTUAL_ENV'], '.inve.ini'))
         os.environ.update(parser.section_items('env', os.environ))
 
-        try:
-            return check_call([command] + list(args), shell=windows, **kwargs)
-            # need to have shell=True on windows, otherwise the PYTHONPATH
-            # won't inherit the PATH
-        except OSError as e:
-            if e.errno == 2:
-                err('Unable to find', command)
-            else:
-                raise
+        if exec_:
+            if 'cwd' in kwargs:
+                os.chdir(kwargs['cwd'])
+            os.execvp(command, [command] + list(args))
+        else:
+            try:
+                return check_call([command] + list(args), shell=windows,
+                    **kwargs)
+                # need to have shell=True on windows, otherwise the PYTHONPATH
+                # won't inherit the PATH
+            except OSError as e:
+                if e.errno == 2:
+                    err('Unable to find', command)
+                else:
+                    raise
 
 
 def fork_shell(env, shellcmd, cwd):
@@ -174,7 +181,7 @@ def fork_shell(env, shellcmd, cwd):
     if 'VIRTUAL_ENV' in os.environ:
         err("Be aware that this environment will be nested on top "
             "of '%s'" % Path(os.environ['VIRTUAL_ENV']).name)
-    inve(env, *shellcmd, cwd=cwd)
+    inve(env, *shellcmd, exec_=True, cwd=cwd)
 
 
 def fork_bash(env, cwd):
